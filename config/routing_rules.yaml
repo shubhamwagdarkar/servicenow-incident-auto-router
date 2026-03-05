@@ -1,0 +1,194 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# ServiceNow Incident Auto-Router — Routing Rules Configuration
+# Author: Shubham Wagdarkar
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Priority weight: keyword match wins over ML if confidence >= ml_confidence_threshold
+ml_confidence_threshold: 0.72
+
+# ─── Assignment Groups ────────────────────────────────────────────────────────
+assignment_groups:
+
+  network:
+    sys_id: "netops-group-001"
+    display_name: "Network Operations"
+    keywords:
+      - network
+      - vpn
+      - firewall
+      - switch
+      - router
+      - dns
+      - dhcp
+      - latency
+      - packet loss
+      - bandwidth
+      - vlan
+      - bgp
+      - ospf
+      - wan
+      - lan
+      - ping
+      - traceroute
+      - connectivity
+      - link down
+      - interface
+
+  security:
+    sys_id: "secops-group-002"
+    display_name: "Security Operations"
+    keywords:
+      - malware
+      - ransomware
+      - phishing
+      - breach
+      - vulnerability
+      - exploit
+      - intrusion
+      - unauthorized
+      - suspicious
+      - threat
+      - virus
+      - trojan
+      - certificate
+      - ssl
+      - tls
+      - password
+      - credential
+      - mfa
+      - authentication
+      - privilege
+
+  database:
+    sys_id: "dba-group-003"
+    display_name: "Database Administration"
+    keywords:
+      - database
+      - sql
+      - oracle
+      - postgres
+      - postgresql
+      - mysql
+      - mssql
+      - mongodb
+      - query
+      - deadlock
+      - replication
+      - backup
+      - restore
+      - tablespace
+      - index
+      - corruption
+      - connection pool
+      - db crash
+      - transaction
+      - schema
+
+  application:
+    sys_id: "appops-group-004"
+    display_name: "Application Operations"
+    keywords:
+      - application
+      - app
+      - api
+      - service
+      - microservice
+      - deploy
+      - deployment
+      - release
+      - build
+      - pipeline
+      - exception
+      - error
+      - crash
+      - unresponsive
+      - timeout
+      - memory leak
+      - cpu spike
+      - pod
+      - container
+      - docker
+      - kubernetes
+      - k8s
+
+  infrastructure:
+    sys_id: "infra-group-005"
+    display_name: "Infrastructure Engineering"
+    keywords:
+      - server
+      - vm
+      - virtual machine
+      - disk
+      - storage
+      - cpu
+      - memory
+      - ram
+      - hardware
+      - datacenter
+      - rack
+      - ups
+      - power
+      - cooling
+      - hypervisor
+      - vmware
+      - azure
+      - aws
+      - cloud
+      - infrastructure
+      - os
+      - operating system
+      - reboot
+      - boot
+
+  service_desk:
+    sys_id: "helpdesk-group-006"
+    display_name: "IT Service Desk"
+    keywords:
+      - password reset
+      - account locked
+      - access request
+      - printer
+      - laptop
+      - desktop
+      - monitor
+      - keyboard
+      - mouse
+      - software install
+      - license
+      - outlook
+      - email
+      - teams
+      - zoom
+      - office
+      - vpn client
+      - onboarding
+      - new user
+
+# ─── Priority Escalation Rules ────────────────────────────────────────────────
+priority_escalation:
+  # If any of these keywords appear, override to P1 regardless of incident priority
+  critical_keywords:
+    - outage
+    - down
+    - unavailable
+    - production down
+    - sev1
+    - severity 1
+    - p1
+    - data loss
+    - breach
+    - ransomware
+    - all users
+
+# ─── Fallback ─────────────────────────────────────────────────────────────────
+fallback_group:
+  sys_id: "helpdesk-group-006"
+  display_name: "IT Service Desk"
+
+# ─── Polling ─────────────────────────────────────────────────────────────────
+polling:
+  interval_seconds: 60
+  max_incidents_per_run: 50
+  # Only process incidents in these states (1=New, 2=In Progress)
+  target_states:
+    - 1
