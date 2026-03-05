@@ -3,7 +3,7 @@
 > Multi-platform ITSM incident classifier and auto-router.
 > Supports ServiceNow · Jira · PagerDuty · Ivanti · Freshservice
 
-Built by **Shubham Wagdarkar** · Content Architect @ Resolve Systems
+Built by **Shubham Wagdarkar**
 
 Polls your ITSM platform for unassigned incidents, classifies them using a **two-stage keyword + ML engine**, auto-assigns them to the correct team via REST API, and logs every routing decision to PostgreSQL for full audit traceability.
 
@@ -56,7 +56,7 @@ Polls your ITSM platform for unassigned incidents, classifies them using a **two
 │                                                       ▼                      │
 │                                      ┌────────────────────────────────────┐ │
 │                                      │   IncidentRouter                   │ │
-│                                      │   • Resolve platform group ID      │ │
+│                                      │   • Look up platform group ID      │ │
 │                                      │   • Build work_notes               │ │
 │                                      │   • Critical keyword escalation    │ │
 │                                      └──────────┬─────────────────────────┘ │
@@ -342,7 +342,7 @@ FROM routing_audit WHERE success = FALSE ORDER BY routed_at DESC;
 ```
 Week 1/42 — shipped: enterprise-incident-auto-router
 
-At Resolve Systems, misrouted incidents are a constant pain point — they add
+In enterprise IT operations, misrouted incidents are a constant pain point — they add
 15-30 min of delay to P1s and burn time for teams that shouldn't own them.
 
 So I built a multi-platform auto-router that works with ServiceNow, Jira,

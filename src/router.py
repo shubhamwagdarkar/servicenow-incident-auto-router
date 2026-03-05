@@ -41,7 +41,7 @@ class IncidentRouter:
 
     For each unassigned incident:
       1. Classify using IncidentClassifier (keyword → ML → fallback)
-      2. Resolve platform-specific group ID from routing_rules
+      2. Look up platform-specific group ID from routing_rules
       3. Call client.assign_incident()
       4. Return a RoutingDecision for audit logging
 
@@ -94,7 +94,7 @@ class IncidentRouter:
         result: ClassificationResult = self._clf.classify(short_desc, description)
         is_critical = self._clf.is_critical(short_desc, description)
 
-        # ── Resolve platform-specific group ID ───────────────────────────────
+        # ── Look up platform-specific group ID ───────────────────────────────
         group_cfg = self._groups.get(result.group_key, {})
         platform_ids: dict = group_cfg.get("platform_ids", {})
         group_platform_id = str(
