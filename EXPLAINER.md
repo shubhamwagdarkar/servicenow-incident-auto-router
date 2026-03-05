@@ -1,4 +1,4 @@
-# Project Explainer — servicenow-incident-auto-router
+# Project Explainer — enterprise-incident-auto-router
 
 > How to explain this project to anyone — from a non-technical recruiter to a Staff Engineer.
 > Written by Shubham Wagdarkar
@@ -7,32 +7,32 @@
 
 ## The Elevator Pitch (30 seconds)
 
-> "I built a Python service that monitors ServiceNow for new IT incidents that haven't been
-> assigned yet. Instead of a human manually reading each ticket and deciding which team should
+> "I built a Python service that connects to any major ITSM platform — ServiceNow, Jira,
+> PagerDuty, Ivanti, or Freshservice — and automatically routes unassigned incidents to the
+> correct team. Instead of a human manually reading each ticket and deciding which team should
 > handle it, my tool reads the incident description, figures out what kind of problem it is —
-> network issue, security breach, database failure — and automatically assigns it to the right
-> team. Every routing decision gets logged to a database so you can audit and improve accuracy
-> over time."
+> network issue, security breach, database failure — and auto-assigns it. Every routing decision
+> gets logged to a database so you can audit accuracy and improve over time."
 
 ---
 
 ## The Problem It Solves
 
-- In enterprise IT, incidents come in 24/7
+- In enterprise IT, incidents come in 24/7 across multiple platforms
 - Someone has to read each one and decide: is this a network problem? A database problem? A security issue?
 - Manual triage is slow, inconsistent, and happens at 3am when nobody wants to do it
 - Misrouted tickets waste time — the wrong team gets paged, they re-route it, add 20–30 min delay to a P1 outage
-- This tool eliminates that entire manual step
+- Most enterprises run 2–3 ITSM tools simultaneously — this router works across all of them
 
 ---
 
 ## How It Works — Plain English
 
-1. **Every 60 seconds**, the tool asks ServiceNow: "give me all new incidents with no team assigned"
+1. **Every 60 seconds**, the tool asks your ITSM platform: "give me all new incidents with no team assigned"
 2. For each incident, it reads the title and description
-3. It tries to figure out which team should own it
-4. It updates the ticket in ServiceNow with the correct team
-5. It writes a log entry to a database recording what happened and why
+3. It runs the text through a three-stage classifier to figure out which team should own it
+4. It updates the ticket in the platform with the correct team assignment
+5. It writes a log entry to a database recording what happened, why, and which platform it came from
 
 ---
 
@@ -82,22 +82,60 @@ Incident Text
 
 ---
 
+## The Multi-Platform Design — What Makes This Advanced
+
+Every ITSM platform has a different REST API, different auth, different data formats. The solution is a **BaseITSMClient abstract class** — it defines the interface every platform client must implement:
+
+```
+get_new_incidents() → list[dict]   # Normalised incident schema
+assign_incident()   → dict         # Platform-native assignment
+health_check()      → bool         # Connectivity test
+```
+
+Each platform client (ServiceNow, Jira, PagerDuty, Ivanti, Freshservice) implements this interface and normalises its data to the same dict schema. The classifier and router never know which platform is active — they always receive the same format.
+
+**Result:** switching platforms is one CLI flag: `--platform jira`
+
+---
+
 ## Key Technical Concepts
+
+### Abstract Base Class (BaseITSMClient)
+- Defines a contract that all platform clients must fulfil
+- Uses Python's `abc.ABC` and `@abstractmethod` decorators
+- Guarantees the router always has `get_new_incidents()`, `assign_incident()`, `health_check()`
+- Classic interface/implementation pattern from enterprise software architecture
 
 ### ServiceNow REST API
 - ServiceNow exposes all its data through a **Table API**
-- `GET /api/now/table/incident` — fetch incidents with filters
+- `GET /api/now/table/incident` — fetch incidents with OData-style filters
 - `PATCH /api/now/table/incident/{sys_id}` — update a field on a record
-- You authenticate with basic auth (username + password)
 - `sys_id` is ServiceNow's internal unique ID for every record
-- `sysparm_query` is how you filter — like a URL-encoded WHERE clause
+
+### Jira Service Management REST API
+- Auth: Basic auth — your Atlassian email + an API token (not your password)
+- `GET /rest/api/3/search` — JQL-based query for issues
+- Assignment via `PUT /rest/api/3/issue/{key}` with component field
+
+### PagerDuty REST API
+- Auth: `Authorization: Token token=YOUR_KEY` header
+- `GET /incidents?statuses[]=triggered` — fetch triggered incidents
+- Assignment via `PUT /incidents/{id}` with escalation_policy
+
+### Ivanti Neurons REST API
+- Uses OData query syntax: `$filter=Status eq 'Active' and Team eq ''`
+- `PATCH /api/odata/businessobject/incidents('{id}')` — update record fields
+
+### Freshservice REST API
+- Auth: API key as username, literal string "X" as password (Freshservice design)
+- `GET /api/v2/tickets?type=Incident&status=2` — fetch open tickets
+- `PUT /api/v2/tickets/{id}` with `group_id` (integer)
 
 ### TF-IDF (Term Frequency–Inverse Document Frequency)
 - Converts raw text into a numerical vector a model can process
 - "VPN" in an incident about networking scores high
 - Common words like "the", "is" score low — they appear everywhere
 - `ngram_range=(1,3)` means it considers single words AND 2–3 word phrases
-  ("packet loss", "connection timeout")
 
 ### Logistic Regression
 - A classification algorithm — takes a vector of numbers, outputs a category
@@ -113,21 +151,14 @@ Incident Text
 
 ### PostgreSQL Audit Log
 - Every routing decision is written to a `routing_audit` table
-- Columns: incident number, which team it went to, how it was classified,
-  confidence score, matched keywords, whether it succeeded
-- Without this you can't measure accuracy, retrain the model, or answer
-  "why did this P1 go to the wrong team?"
+- Columns: incident ID, platform, team assigned, method, confidence, matched keywords, success/failure
+- Includes `platform` column so you can compare routing accuracy across ServiceNow vs Jira vs PagerDuty
 
 ### Retry Logic
-- HTTP calls to ServiceNow can fail — timeouts, rate limits, server errors
+- HTTP calls to any ITSM can fail — timeouts, rate limits, server errors
 - `urllib3.Retry` automatically retries on 429, 500, 502, 503, 504 status codes
 - Exponential backoff — waits 2s, then 4s, then 8s between retries
-- Prevents the tool from crashing on a transient network blip
-
-### `schedule` Library
-- Pure Python job scheduler — no Celery, no Redis, no infrastructure needed
-- `schedule.every(60).seconds.do(job)` — that's the entire scheduling logic
-- Appropriate for a single-process polling service
+- Same retry strategy applied consistently across all 5 platform clients
 
 ---
 
@@ -135,8 +166,8 @@ Incident Text
 
 **"Why keyword matching before ML?"**
 > Keywords are deterministic, fast, and fully explainable. If a ticket has "vpn" and
-> "firewall" in it, you don't need a model — the answer is obvious. Saving ML for
-> ambiguous cases makes the system more reliable and easier to debug.
+> "firewall" in it, you don't need a model. Saving ML for ambiguous cases makes the
+> system more reliable and easier to debug.
 
 **"Why bootstrap ML from keywords instead of using labeled data?"**
 > We don't have a labeled incident dataset on Day 1. By generating training examples
@@ -145,17 +176,21 @@ Incident Text
 
 **"Why Logistic Regression instead of a neural network?"**
 > LR is fast, interpretable, and works well on short text with limited training data.
-> A transformer model would be overkill here — it adds latency, cost, and complexity
-> for marginal accuracy gains on structured IT incident text.
+> A transformer model would be overkill — it adds latency, cost, and complexity for
+> marginal accuracy gains on structured IT incident text.
+
+**"Why an abstract base class for clients?"**
+> It enforces a contract: every platform client must implement the same three methods.
+> The router stays completely platform-agnostic. Adding a 6th platform (e.g. Zendesk)
+> means writing one new client file — nothing else changes.
 
 **"Why YAML for routing rules?"**
 > Ops teams need to update keywords without touching Python code. YAML is readable,
 > version-controllable, and doesn't require a redeployment to change routing behavior.
 
 **"Why log to PostgreSQL instead of a file?"**
-> Files don't give you aggregations, trend queries, or easy integration with dashboards.
-> PostgreSQL lets you answer questions like "what % of incidents route via ML?" or
-> "which team gets the most P1s?" with a single SQL query.
+> PostgreSQL lets you answer questions like "which platform has the highest fallback rate?"
+> or "which team gets the most P1s?" with a single SQL query. Files can't do that.
 
 ---
 
@@ -176,11 +211,12 @@ Incident Text
 
 | Metric | Value |
 |---|---|
+| Supported ITSM platforms | 5 |
 | Assignment groups | 6 |
 | Keywords across all groups | 100+ |
 | Classification stages | 3 (keyword → ML → fallback) |
 | ML confidence threshold | 72% |
-| Unit tests | 20, all passing |
+| Unit tests | 36, all passing |
 | Polling interval | 60 seconds (configurable) |
 | Max incidents per run | 50 (configurable) |
 
@@ -190,13 +226,14 @@ Incident Text
 
 | Question | Answer |
 |---|---|
-| "What if ServiceNow is down?" | Retry logic with exponential backoff; errors logged to audit table |
+| "What if the ITSM platform is down?" | Retry logic with exponential backoff; errors logged to audit table |
 | "What if the ML routes wrong?" | Adjust keywords in YAML — no code change needed; or lower the ML threshold |
 | "How do you improve accuracy over time?" | Audit table gives you ground truth to retrain the ML model |
-| "What's dry-run mode?" | Classifies incidents but never writes back to ServiceNow — safe for testing in prod |
-| "Could this work for Jira or PagerDuty?" | Yes — swap out `snow_client.py` for a Jira/PagerDuty client, rest stays the same |
+| "What's dry-run mode?" | Classifies incidents but never writes back to the platform — safe for testing in prod |
+| "Can you add a 6th platform like Zendesk?" | Yes — implement BaseITSMClient, add env vars, register in build_client(). Nothing else changes. |
 | "How does it handle incidents it can't classify?" | Always falls back to IT Service Desk — 100% assignment rate guaranteed |
-| "Is it safe to run against production?" | Yes — use `--dry-run` flag to classify without any ServiceNow writes |
+| "Is it safe to run against production?" | Yes — use `--dry-run` flag to classify without any writes |
+| "How do you compare routing quality across platforms?" | `SELECT platform, classification_method, COUNT(*) FROM routing_audit GROUP BY 1,2` |
 
 ---
 
@@ -204,14 +241,21 @@ Incident Text
 
 | File | What It Does | Key Concept |
 |---|---|---|
-| `main.py` | CLI entrypoint, wires everything together | argparse, schedule |
-| `src/snow_client.py` | Talks to ServiceNow REST API | HTTP, retry, basic auth |
+| `main.py` | CLI entrypoint, client factory, scheduler | argparse, factory pattern |
+| `src/clients/base_client.py` | Abstract interface all clients implement | ABC, abstractmethod |
+| `src/clients/snow_client.py` | ServiceNow Table REST API | Basic auth, sys_id |
+| `src/clients/jira_client.py` | Jira Service Management REST API | API token, JQL |
+| `src/clients/pagerduty_client.py` | PagerDuty REST API v2 | Token header, escalation policy |
+| `src/clients/ivanti_client.py` | Ivanti Neurons OData REST API | OData filter, PATCH |
+| `src/clients/freshservice_client.py` | Freshservice REST API v2 | API key auth, group_id |
 | `src/classifier.py` | Two-stage text classification engine | TF-IDF, Logistic Regression |
 | `src/router.py` | Orchestrates classify → assign → decision | Dataclass, dry-run pattern |
 | `src/audit.py` | Writes every decision to PostgreSQL | psycopg2, auto-schema |
-| `config/routing_rules.yaml` | Keywords, group IDs, thresholds | YAML config pattern |
+| `config/routing_rules.yaml` | Keywords, platform group IDs, thresholds | YAML config, platform_ids |
 | `tests/test_classifier.py` | Unit tests for classification logic | pytest, fixtures |
-| `tests/test_router.py` | Unit tests for routing + dry-run | pytest, MagicMock |
+| `tests/test_router.py` | Unit tests for routing, dry-run, multi-platform | pytest, MagicMock |
+| `tests/clients/test_jira_client.py` | Jira client normalisation + error tests | pytest, patch |
+| `tests/clients/test_freshservice_client.py` | Freshservice client normalisation + error tests | pytest, patch |
 
 ---
 
@@ -219,7 +263,7 @@ Incident Text
 
 | Library | Why Used |
 |---|---|
-| `requests` | HTTP calls to ServiceNow REST API |
+| `requests` | HTTP calls to all 5 ITSM REST APIs |
 | `scikit-learn` | TF-IDF vectorizer + Logistic Regression classifier |
 | `psycopg2` | PostgreSQL connection and query execution |
 | `PyYAML` | Parse routing_rules.yaml config file |

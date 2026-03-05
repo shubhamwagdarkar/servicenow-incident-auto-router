@@ -1,17 +1,29 @@
 # ─────────────────────────────────────────────────────────────────────────────
-# ServiceNow Incident Auto-Router — Routing Rules Configuration
-# Author: Shubham Wagdarkar
+# Enterprise Incident Auto-Router — Routing Rules Configuration
+# Supports: ServiceNow · Jira · PagerDuty · Ivanti · Freshservice
 # ─────────────────────────────────────────────────────────────────────────────
 
 # Priority weight: keyword match wins over ML if confidence >= ml_confidence_threshold
 ml_confidence_threshold: 0.72
 
 # ─── Assignment Groups ────────────────────────────────────────────────────────
+# platform_ids: platform-native group identifiers used in API assignment calls
+#   servicenow  → assignment_group sys_id
+#   jira        → Jira component name
+#   pagerduty   → escalation policy ID
+#   ivanti      → team name string
+#   freshservice → group_id (integer, stored as string)
+
 assignment_groups:
 
   network:
-    sys_id: "netops-group-001"
     display_name: "Network Operations"
+    platform_ids:
+      servicenow:   "netops-group-001"
+      jira:         "Network"
+      pagerduty:    "PD_NETOPS_EP_001"
+      ivanti:       "Network Operations"
+      freshservice: "12001"
     keywords:
       - network
       - vpn
@@ -35,8 +47,13 @@ assignment_groups:
       - interface
 
   security:
-    sys_id: "secops-group-002"
     display_name: "Security Operations"
+    platform_ids:
+      servicenow:   "secops-group-002"
+      jira:         "Security"
+      pagerduty:    "PD_SECOPS_EP_002"
+      ivanti:       "Security Operations"
+      freshservice: "12002"
     keywords:
       - malware
       - ransomware
@@ -60,8 +77,13 @@ assignment_groups:
       - privilege
 
   database:
-    sys_id: "dba-group-003"
     display_name: "Database Administration"
+    platform_ids:
+      servicenow:   "dba-group-003"
+      jira:         "Database"
+      pagerduty:    "PD_DBA_EP_003"
+      ivanti:       "Database Administration"
+      freshservice: "12003"
     keywords:
       - database
       - sql
@@ -85,8 +107,13 @@ assignment_groups:
       - schema
 
   application:
-    sys_id: "appops-group-004"
     display_name: "Application Operations"
+    platform_ids:
+      servicenow:   "appops-group-004"
+      jira:         "Application"
+      pagerduty:    "PD_APPOPS_EP_004"
+      ivanti:       "Application Operations"
+      freshservice: "12004"
     keywords:
       - application
       - app
@@ -112,8 +139,13 @@ assignment_groups:
       - k8s
 
   infrastructure:
-    sys_id: "infra-group-005"
     display_name: "Infrastructure Engineering"
+    platform_ids:
+      servicenow:   "infra-group-005"
+      jira:         "Infrastructure"
+      pagerduty:    "PD_INFRA_EP_005"
+      ivanti:       "Infrastructure Engineering"
+      freshservice: "12005"
     keywords:
       - server
       - vm
@@ -141,8 +173,13 @@ assignment_groups:
       - boot
 
   service_desk:
-    sys_id: "helpdesk-group-006"
     display_name: "IT Service Desk"
+    platform_ids:
+      servicenow:   "helpdesk-group-006"
+      jira:         "Service Desk"
+      pagerduty:    "PD_HELPDESK_EP_006"
+      ivanti:       "IT Service Desk"
+      freshservice: "12006"
     keywords:
       - password reset
       - account locked
@@ -166,7 +203,6 @@ assignment_groups:
 
 # ─── Priority Escalation Rules ────────────────────────────────────────────────
 priority_escalation:
-  # If any of these keywords appear, override to P1 regardless of incident priority
   critical_keywords:
     - outage
     - down
@@ -182,13 +218,19 @@ priority_escalation:
 
 # ─── Fallback ─────────────────────────────────────────────────────────────────
 fallback_group:
-  sys_id: "helpdesk-group-006"
   display_name: "IT Service Desk"
+  platform_ids:
+    servicenow:   "helpdesk-group-006"
+    jira:         "Service Desk"
+    pagerduty:    "PD_HELPDESK_EP_006"
+    ivanti:       "IT Service Desk"
+    freshservice: "12006"
 
 # ─── Polling ─────────────────────────────────────────────────────────────────
 polling:
   interval_seconds: 60
   max_incidents_per_run: 50
-  # Only process incidents in these states (1=New, 2=In Progress)
+  # ServiceNow: only process New (1) incidents
+  # Other platforms use their own status filtering internally
   target_states:
     - 1
