@@ -335,34 +335,6 @@ FROM routing_audit WHERE success = FALSE ORDER BY routed_at DESC;
 
 4. **Audit logging is architectural, not optional** — without `routing_audit`, you have no visibility into routing quality across platforms and no data for retraining.
 
----
-
-## LinkedIn Post
-
-```
-Week 1/42 — shipped: enterprise-incident-auto-router
-
-In enterprise IT operations, misrouted incidents are a constant pain point — they add
-15-30 min of delay to P1s and burn time for teams that shouldn't own them.
-
-So I built a multi-platform auto-router that works with ServiceNow, Jira,
-PagerDuty, Ivanti, and Freshservice:
-
-- Polls your ITSM for unassigned incidents
-- Classifies them: keyword matching → scikit-learn ML fallback
-- Auto-assigns to the right team via REST API
-- Logs every decision to PostgreSQL for audit
-
-Stack: Python + requests + scikit-learn + psycopg2 + schedule
-Build time: ~6 hours
-
-github.com/shubhamwagdarkar/enterprise-incident-auto-router
-
-Key insight: one abstract client interface = 5 platforms, zero changes to
-the classification or routing logic.
-
-#EnterpriseAutomation #AIOps #ServiceNow #Jira #PagerDuty #Python #OpenSource
-```
 
 ---
 
