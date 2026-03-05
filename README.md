@@ -1,12 +1,11 @@
 # enterprise-incident-auto-router
 
-> **Week 1 / 42** — GitHub Weekly Project Series
-> **Stack:** Python · requests · scikit-learn · psycopg2 · schedule
-> **Author:** Shubham Wagdarkar | Content Architect @ Resolve Systems
+> Multi-platform ITSM incident classifier and auto-router.
+> Supports ServiceNow · Jira · PagerDuty · Ivanti · Freshservice
+
+Built by **Shubham Wagdarkar** · Content Architect @ Resolve Systems
 
 Polls your ITSM platform for unassigned incidents, classifies them using a **two-stage keyword + ML engine**, auto-assigns them to the correct team via REST API, and logs every routing decision to PostgreSQL for full audit traceability.
-
-**Supported platforms:** ServiceNow · Jira Service Management · PagerDuty · Ivanti Neurons · Freshservice
 
 ---
 
@@ -134,7 +133,7 @@ ITSM Platform (unassigned incidents)
 ### 1. Clone and install
 
 ```bash
-git clone https://github.com/shubhamwagdarkar/servicenow-incident-auto-router.git
+git clone https://github.com/shubhamwagdarkar/enterprise-incident-auto-router.git
 cd enterprise-incident-auto-router
 
 python -m venv .venv
@@ -357,7 +356,7 @@ PagerDuty, Ivanti, and Freshservice:
 Stack: Python + requests + scikit-learn + psycopg2 + schedule
 Build time: ~6 hours
 
-github.com/shubhamwagdarkar/servicenow-incident-auto-router
+github.com/shubhamwagdarkar/enterprise-incident-auto-router
 
 Key insight: one abstract client interface = 5 platforms, zero changes to
 the classification or routing logic.
