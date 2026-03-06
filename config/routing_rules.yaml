@@ -234,3 +234,11 @@ polling:
   # Other platforms use their own status filtering internally
   target_states:
     - 1
+
+# ─── PagerDuty Escalation Monitor ────────────────────────────────────────────
+# Used by: python main.py --platform pagerduty --pd-monitor
+pagerduty:
+  escalation:
+    ack_timeout_minutes: 5       # Escalate if not acknowledged within N minutes
+    max_escalation_level: 3      # Never escalate beyond this policy level
+    check_interval_seconds: 30   # Heartbeat cadence for --pd-monitor mode

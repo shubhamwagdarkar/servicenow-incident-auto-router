@@ -58,7 +58,7 @@ class PagerDutyClient(BaseITSMClient):
             total=max_retries,
             backoff_factor=2,
             status_forcelist=[429, 500, 502, 503, 504],
-            allowed_methods=["GET", "PUT"],
+            allowed_methods=["GET", "PUT", "POST"],
         )
         session.mount("https://", HTTPAdapter(max_retries=retry))
         return session
@@ -133,6 +133,59 @@ class PagerDutyClient(BaseITSMClient):
             raise ITSMError(
                 f"PagerDuty assign incident {platform_id} failed: {exc}"
             ) from exc
+
+    def get_triggered_incidents_with_metadata(self, limit: int = 50) -> list[dict]:
+        """
+        Lightweight pulse fetch — returns only fields needed for ack-check.
+
+        Strips down the PagerDuty response to {id, created_at, escalation_level, title}
+        to keep the heartbeat payload minimal.
+        """
+        params = {
+            "statuses[]": ["triggered"],
+            "limit": limit,
+            "sort_by": "created_at:asc",
+        }
+        try:
+            resp = self._session.get(
+                f"{PD_API_BASE}/incidents",
+                params=params,
+                timeout=self._timeout,
+            )
+            resp.raise_for_status()
+            incidents = resp.json().get("incidents", [])
+            return [
+                {
+                    "id":               i.get("id", ""),
+                    "created_at":       i.get("created_at", ""),
+                    "escalation_level": i.get("escalation_level", 1),
+                    "title":            i.get("title", ""),
+                }
+                for i in incidents
+            ]
+        except requests.exceptions.HTTPError as exc:
+            raise ITSMError(f"PagerDuty GET incidents (pulse) failed: {exc}") from exc
+
+    def escalate_incident(self, platform_id: str, escalation_level: int) -> bool:
+        """
+        Escalate a PagerDuty incident to the specified escalation level.
+
+        Calls POST /incidents/{id}/escalate with {"escalation_level": N}.
+        Returns True on success, False on API error (non-raising — safe for heartbeat loop).
+        """
+        url = f"{PD_API_BASE}/incidents/{platform_id}/escalate"
+        payload = {"escalation_level": escalation_level}
+        try:
+            resp = self._session.post(url, json=payload, timeout=self._timeout)
+            resp.raise_for_status()
+            logger.info(
+                "Escalated PagerDuty incident %s to level %d",
+                platform_id, escalation_level,
+            )
+            return True
+        except requests.exceptions.HTTPError as exc:
+            logger.error("PagerDuty escalate %s to level %d failed: %s", platform_id, escalation_level, exc)
+            return False
 
     def health_check(self) -> bool:
         try:

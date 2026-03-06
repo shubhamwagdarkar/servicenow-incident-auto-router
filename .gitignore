@@ -28,6 +28,9 @@ pip-delete-this-directory.txt
 # Uncomment if you don't want to commit trained models
 # model/*.joblib
 
+# ─── Claude Code ─────────────────────────────────────────────────────────────
+.claude/
+
 # ─── IDE ─────────────────────────────────────────────────────────────────────
 .idea/
 .vscode/
