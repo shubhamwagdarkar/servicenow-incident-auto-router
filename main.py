@@ -8,11 +8,12 @@ logs every routing decision to PostgreSQL for full audit traceability.
 Supported platforms: servicenow · jira · pagerduty · ivanti · freshservice
 
 Usage:
-    python main.py --platform servicenow            # Run once (ServiceNow)
-    python main.py --platform jira --schedule       # Poll Jira every 60s
-    python main.py --platform pagerduty --dry-run   # Classify PD, no writes
-    python main.py --platform freshservice --stats  # Audit stats for Freshservice
-    python main.py --save-model                     # Train + save ML model
+    python main.py --platform servicenow              # Run once (ServiceNow)
+    python main.py --platform jira --schedule         # Poll Jira every 60s
+    python main.py --platform pagerduty --dry-run     # Classify PD, no writes
+    python main.py --platform freshservice --stats    # Audit stats for Freshservice
+    python main.py --platform pagerduty --pd-monitor  # Heartbeat escalation loop
+    python main.py --save-model                       # Train + save ML model
     python main.py --help
 """
 
@@ -241,6 +242,11 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Train and save the ML model to disk, then exit",
     )
+    parser.add_argument(
+        "--pd-monitor",
+        action="store_true",
+        help="Run PagerDuty escalation heartbeat — escalates unacked incidents (requires --platform pagerduty)",
+    )
     return parser.parse_args()
 
 
@@ -267,6 +273,31 @@ def main() -> None:
             logger.error("DATABASE_URL required for --stats")
             sys.exit(1)
         print_stats(audit_logger)
+        return
+
+    if args.pd_monitor:
+        if args.platform != "pagerduty":
+            logger.error("--pd-monitor requires --platform pagerduty")
+            sys.exit(1)
+        from src.pd_escalation_monitor import PDEscalationMonitor
+        monitor = PDEscalationMonitor(client=client, rules=rules)
+        interval = int(
+            rules.get("pagerduty", {}).get("escalation", {}).get("check_interval_seconds", 30)
+        )
+        logger.info(
+            "PagerDuty escalation monitor started — pulse every %ds "
+            "(ack_timeout=%dm, max_level=%d)",
+            interval, monitor.ack_timeout_minutes, monitor.max_escalation_level,
+        )
+        try:
+            while True:
+                monitor.pulse()
+                time.sleep(interval)
+        except KeyboardInterrupt:
+            logger.info("PagerDuty escalation monitor stopped")
+        finally:
+            if audit_logger:
+                audit_logger.close()
         return
 
     def job() -> None:
