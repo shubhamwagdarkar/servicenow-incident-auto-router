@@ -164,6 +164,9 @@ python main.py --platform servicenow --dry-run
 # Scheduled mode — polls every 60s (configurable in routing_rules.yaml)
 python main.py --platform jira --schedule
 
+# PagerDuty heartbeat escalation monitor
+python main.py --platform pagerduty --pd-monitor
+
 # Save trained ML model to disk
 python main.py --save-model
 
@@ -175,7 +178,7 @@ python main.py --stats
 
 ```bash
 pytest tests/ -v
-# 36 tests, all passing
+# 46 tests, all passing
 ```
 
 ---
@@ -195,7 +198,8 @@ enterprise-incident-auto-router/
 │   │   └── freshservice_client.py      # Freshservice REST API v2
 │   ├── classifier.py                   # Two-stage keyword + ML classifier
 │   ├── router.py                       # Orchestrates classify → assign → log
-│   └── audit.py                        # PostgreSQL audit logger
+│   ├── audit.py                        # PostgreSQL audit logger
+│   └── pd_escalation_monitor.py        # PagerDuty heartbeat escalation monitor
 ├── config/
 │   └── routing_rules.yaml              # Keywords, platform group IDs, ML threshold
 ├── tests/
@@ -203,7 +207,8 @@ enterprise-incident-auto-router/
 │   │   ├── test_jira_client.py         # Jira client unit tests
 │   │   └── test_freshservice_client.py # Freshservice client unit tests
 │   ├── test_classifier.py              # Classification logic unit tests
-│   └── test_router.py                  # Routing + dry-run + multi-platform tests
+│   ├── test_router.py                  # Routing + dry-run + multi-platform tests
+│   └── test_pd_escalation_monitor.py   # Escalation monitor unit tests
 ├── model/                              # (generated) saved sklearn Pipeline
 ├── requirements.txt
 ├── .env.example
@@ -236,6 +241,12 @@ assignment_groups:
 
 priority_escalation:
   critical_keywords: [outage, down, ransomware, ...]
+
+pagerduty:
+  escalation:
+    ack_timeout_minutes: 5       # Escalate if unacked for longer than this
+    max_escalation_level: 3      # Never escalate beyond this level
+    check_interval_seconds: 30   # Heartbeat cadence for --pd-monitor mode
 ```
 
 ---
@@ -305,6 +316,34 @@ FROM routing_audit WHERE success = FALSE ORDER BY routed_at DESC;
 
 ---
 
+## PagerDuty Escalation Monitor
+
+The `--pd-monitor` mode runs a lightweight heartbeat loop alongside (or independently of) the main router. Rather than re-assigning incidents, it watches for triggered (unacknowledged) incidents that have exceeded the SLA window and automatically escalates them up the policy.
+
+```
+PDEscalationMonitor.pulse()
+    │
+    ├── GET /incidents?statuses[]=triggered   (id, created_at, escalation_level, title only)
+    │
+    └── For each incident where elapsed > ack_timeout_minutes:
+            next_level = current_level + 1
+            if next_level > max_escalation_level → skip (already at ceiling)
+            POST /incidents/{id}/escalate  {"escalation_level": next_level}
+```
+
+**Key design choices:**
+- Minimal payload — only 4 fields fetched per incident, no full incident object
+- Non-raising — a single API failure logs a warning and continues; the loop never aborts
+- Max-level ceiling — prevents runaway escalation past the configured policy limit
+- Bad timestamp tolerance — malformed `created_at` fields are skipped gracefully
+
+```bash
+# Start the escalation monitor (pulses every 30s by default)
+python main.py --platform pagerduty --pd-monitor
+```
+
+---
+
 ## Classification Engine
 
 ### Stage 1: Keyword Match (fast path)
@@ -334,6 +373,8 @@ FROM routing_audit WHERE success = FALSE ORDER BY routed_at DESC;
 3. **Dry-run mode is non-negotiable** when writing back to production ITSM systems. Every automation touching live data needs a safe test path.
 
 4. **Audit logging is architectural, not optional** — without `routing_audit`, you have no visibility into routing quality across platforms and no data for retraining.
+
+5. **Heartbeat/pulse pattern keeps API payloads minimal** — fetching only the 4 fields needed for an ack-check (instead of full incident objects) reduces wire traffic significantly at scale. Non-raising escalation calls ensure one bad incident never kills the whole loop.
 
 
 ---
